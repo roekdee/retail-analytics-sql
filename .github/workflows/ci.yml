@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: retail_analytics
+        ports:
+          - 5432:5432
+        # Wait until Postgres is accepting connections before the job starts.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: retail_analytics
+      # Fail the run on the first SQL error and stop on error inside scripts.
+      PSQL: psql -v ON_ERROR_STOP=1 --no-psqlrc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; then
+              echo "Postgres is ready"; exit 0
+            fi
+            echo "waiting for postgres... ($i)"; sleep 2
+          done
+          echo "Postgres did not become ready in time"; exit 1
+
+      - name: Load schema
+        run: $PSQL -f schema.sql
+
+      - name: Load seed data
+        run: $PSQL -f seed.sql
+
+      - name: Create views
+        run: $PSQL -f views.sql
+
+      - name: Run analytical queries
+        run: |
+          for f in queries/*.sql; do
+            echo "=== Running $f ==="
+            $PSQL -f "$f"
+          done
+
+      - name: Run assertion tests
+        run: $PSQL -f tests/run.sql

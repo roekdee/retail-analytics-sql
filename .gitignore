@@ -1,0 +1,17 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Postgres / local dumps
+*.dump
+*.sql.bak
+pgdata/
+*.log
+
+# Env
+.env
+.env.local
